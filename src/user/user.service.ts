@@ -1,50 +1,45 @@
 // src/user/user.service.ts
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { RegisterDto } from 'src/auth/registerUser.dto';
-/**
- * FIX: Import from the index folder directly.
- * This allows TS to find the generated index.d.ts file.
- */
+import { Injectable, ConflictException } from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { User } from '@prisma/client'; // 👈 Explicit type boundaries
 
 @Injectable()
 export class UserService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * We add 'async' and 'await' here.
-   * This ensures ESLint can verify that the returned value
-   * matches the Promise<User> type definition.
-   */
-  async createUser(data: RegisterDto) {
-    const existingUser = await this.prisma.user.findFirst({
-      where: { email: data.email },
-    });
-    if (existingUser) {
-      throw new ConflictException('Email Already Exist');
-    }
-    return this.prisma.user.create({
-      data, // name, email, password — matches Prisma schema exactly
-    });
-  }
-
+  // 1. Used for general lookups: completely excludes the secret password hash
   async findUserByEmail(email: string) {
-    const user = await this.prisma.user.findUnique({
+    return await this.prisma.user.findUnique({
       where: { email },
       select: {
         id: true,
-        name: true,
         email: true,
+        name: true,
         role: true,
+        createdAt: true,
       },
     });
-    if (!user) {
-      throw new NotFoundException(`User with email ${email} not found`); // 👈
+  }
+
+  // 2. Used EXCLUSIVELY by AuthService: keeps the password hash intact for bcrypt verification
+  async findUserForAuth(email: string): Promise<User | null> {
+    return await this.prisma.user.findUnique({
+      where: { email },
+    });
+  }
+
+  // 3. Registers fresh users safely after verifying unique email constraints
+  async createUser(data: any): Promise<User> {
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: data.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email Already Exists');
     }
-    return user;
+
+    return await this.prisma.user.create({
+      data,
+    });
   }
 }

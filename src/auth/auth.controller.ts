@@ -1,24 +1,99 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+// src/auth/auth.controller.ts
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UnauthorizedException,
+  Res,
+} from '@nestjs/common';
+import * as express from 'express';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './registerUser.dto';
+import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { Cookies } from './decorators/cookies.decorator';
 
 @Controller('auth')
 export class AuthController {
-  authService: AuthService;
-  constructor(authService: AuthService) {
-    this.authService = authService;
+  constructor(private readonly authService: AuthService) {}
+
+  // Centralized configuration manager for dropping secure session cookies
+  private setAuthCookies(
+    res: express.Response,
+    accessToken: string,
+    refreshToken: string,
+  ) {
+    // 1. Short-lived Access Cookie (15 Minutes)
+    res.cookie('access_token', accessToken, {
+      httpOnly: true,
+      secure: false, // Set to true in production environments using HTTPS
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000, // 15 mins in milliseconds
+    });
+
+    // 2. Long-lived Refresh Cookie (7 Days)
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: false, // Set to true in production environments using HTTPS
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+    });
   }
+
   @Post('register')
-  register(@Body() registerUserDto: RegisterDto) {
-    const result = this.authService.registerUser(registerUserDto);
-    return result;
+  async register(
+    @Body() registerDto: RegisterDto,
+    @Res({ passthrough: true }) res: express.Response,
+  ) {
+    const tokens = await this.authService.register(registerDto);
+    this.setAuthCookies(res, tokens.access_token, tokens.refresh_token);
+    return { success: true, message: 'Account registered successfully' };
   }
-  @Get('login')
-  login() {
-    return { message: 'User logged in' };
+
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: express.Response,
+  ) {
+    const tokens = await this.authService.login(loginDto);
+    this.setAuthCookies(res, tokens.access_token, tokens.refresh_token);
+    return { success: true, message: 'Logged in successfully' };
   }
-  @Get('find')
-  findByEmail(@Query('email') email: string) {
-    return this.authService.findUserByEmail(email);
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(
+    @Cookies('refresh_token') refreshToken: string | undefined,
+    @Res({ passthrough: true }) res: express.Response,
+  ) {
+    if (!refreshToken) {
+      throw new UnauthorizedException(
+        'Refresh token missing from session cookies',
+      );
+    }
+
+    const tokens = await this.authService.refreshSession(refreshToken);
+    this.setAuthCookies(res, tokens.access_token, tokens.refresh_token);
+    return { success: true, message: 'Session token rotated successfully' };
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(
+    @Cookies('access_token') accessToken: string | undefined,
+    @Res({ passthrough: true }) res: express.Response,
+  ) {
+    // 1. Immediately wipe both target cookies from browser storage containers
+    res.clearCookie('access_token');
+    res.clearCookie('refresh_token');
+
+    // 2. Purge the matching track record row out of PostgreSQL if present
+    if (accessToken) {
+      await this.authService.logout(accessToken);
+    }
+
+    return { success: true, message: 'Logged out successfully' };
   }
 }

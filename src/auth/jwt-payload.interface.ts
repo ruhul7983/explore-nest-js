@@ -1,6 +1,12 @@
-// auth/jwt-payload.interface.ts
+// src/auth/jwt-payload.interface.ts
+
 export interface JwtPayload {
-  sub: string; // user id
+  /** The unique User ID stored as the token subject */
+  sub: string;
+
+  /** The authenticated user's email address */
   email: string;
-  role: string;
+
+  /** The explicit application authorization role */
+  role: 'USER' | 'ADMIN';
 }

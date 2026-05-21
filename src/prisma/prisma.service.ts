@@ -9,7 +9,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
  * We import from the folder index '../generated/prisma', NOT from '/client'.
  * This allows TypeScript to resolve the full type definitions for your models.
  */
-import { PrismaClient } from '../../generated/prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService

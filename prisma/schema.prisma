@@ -4,9 +4,9 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
-  moduleFormat = "cjs"
+  provider = "prisma-client-js"
+  // output   = "../generated/prisma"
+  // moduleFormat = "cjs"
 }
 
 datasource db {
@@ -19,15 +19,30 @@ enum Role {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  password  String // Always store hashed passwords
-  role      Role     @default(USER) // Use the enum here
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String      @id @default(uuid())
+  email      String      @unique
+  name       String?
+  password   String 
+  role       Role        @default(USER) 
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  portfolios Portfolio[]
+  tokens     UserToken[] // 👈 One-to-many relationship tracking active sessions
 }
 
+model UserToken {
+  id           String   @id @default(uuid())
+  accessToken  String   @unique @db.Text // Real-time access token matching
+  refreshToken String   @unique @db.Text // Long-lived token rotation key
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isValid      Boolean  @default(true)   // Set false to instantly kill this session
+  expiresAt    DateTime                  // Exact timestamp when the 7-day refresh token dies
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
 
 model Project {
   id        String   @id @default(uuid())
@@ -37,4 +52,16 @@ model Project {
   imageUrl  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Portfolio {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  url         String? // Optional external link
+  imageUrl    String? // Optional visual asset thumb
+  userId      String // Foreign key link
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
